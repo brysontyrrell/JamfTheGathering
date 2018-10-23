@@ -1,4 +1,8 @@
 import json
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def response(message, status_code):
@@ -25,22 +29,30 @@ def response(message, status_code):
 
 def lambda_handler(event, context):
     body = json.loads(event['body'])
-    print(body)
+    logger.info(body)
 
     event_type = body.get('type')
-    challenge = body.get('challenge')
+    logger.info(f'Event Type: {event_type}')
 
-    print(f'Verification Type: {event_type}')
-    print(f'Challenge: {challenge}')
+    if event_type == 'url_verification':
+        logger.info('Sending challenge response...')
 
-    if event_type == 'url_verification' and challenge:
-        print('Sending challenge response...')
+        challenge = body.get('challenge')
+        logger.info(f'Challenge: {challenge}')
+
         return response({'challenge': challenge}, 200)
 
     elif event_type == 'event_callback':
-        print('Received an event!')
+        logger.info('Received an event!')
+
+        slack_event = body['event']
+        if slack_event['type'] == 'app_mention':
+            pass
+        elif slack_event['type'] == 'message':
+            pass
+
         return response('success', 200)
 
     else:
-        print('Bad Request')
+        logger.warning('Bad Request')
         return response('Bad Request', 400)

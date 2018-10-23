@@ -12,14 +12,26 @@ Parameters:
     Type: String
     Description: The custom domain name for the API
 
+  DatabaseMasterUsername:
+    Type: String
+    Description: The master username to set for the Aurora MySQL database
+
   DatabaseMasterPassword:
     Type: String
     Description: The master password to set for the Aurora MySQL database
     NoEcho: true
 
   DatabaseSubnets:
-    Type: 'List<AWS::EC2::Subnet::Id>'
+    Type: List<AWS::EC2::Subnet::Id>
     Description: Subnets for use by the Aurora MySQL database
+
+  DatabaseSchemaVersion:
+    Type: Number
+    Description: A version value for the database schema to trigger an update
+
+  LambdaSecurityGroups:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: Security groups to assign VPC deployed Lambdas
 
   SlackClientId:
     Type: String
@@ -108,15 +120,47 @@ Resources:
         MaxCapacity: 4
         AutoPause: true
         SecondsUntilAutoPause: 300
-      MasterUsername: jtgadmin
+      MasterUsername: !Ref DatabaseMasterUsername
       MasterUserPassword: !Ref DatabaseMasterPassword
 
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: "Subnet Group for the Database"
-      DBSubnetGroupName: slack-database
+      DBSubnetGroupName: !Sub '${AWS::StackName}-db-sg'
       SubnetIds: !Ref DatabaseSubnets
+
+# Database Initialization
+
+  DatabaseInitializer:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.6
+      CodeUri: ./src/cloudformation/database_initializer
+      Handler: database_initializer.lambda_handler
+      VpcConfig:
+        SecurityGroupIds: !Ref LambdaSecurityGroups
+        SubnetIds: !Ref DatabaseSubnets
+      Environment:
+        Variables:
+          DATABASE_ENDPOINT: !GetAtt Database.Endpoint.Address
+          DATABASE_PORT: !GetAtt Database.Endpoint.Port
+          DATABASE_USERNAME: !Ref DatabaseMasterUsername
+          DATABASE_PASSWORD: !Ref DatabaseMasterPassword
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - ec2:DescribeNetworkInterfaces
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+            Resource: '*'
+
+  DatabaseInitializerResource:
+    Type: Custom::DatabaseInitializer
+    Properties:
+      ServiceToken: !GetAtt DatabaseInitializer.Arn
+      DatabaseSchemaVersion: !Ref DatabaseSchemaVersion
 
 # Lambda Functions
 
