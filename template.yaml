@@ -113,6 +113,7 @@ Resources:
     Properties:
       Engine: aurora
       EngineMode: serverless
+      DatabaseName: jamfthegathering
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       StorageEncrypted: true
       ScalingConfiguration:
@@ -138,6 +139,7 @@ Resources:
       Runtime: python3.6
       CodeUri: ./src/cloudformation/database_initializer
       Handler: database_initializer.lambda_handler
+      Timeout: 30
       VpcConfig:
         SecurityGroupIds: !Ref LambdaSecurityGroups
         SubnetIds: !Ref DatabaseSubnets
