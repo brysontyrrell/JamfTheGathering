@@ -12,15 +12,28 @@ Parameters:
     Type: String
     Description: The custom domain name for the API
 
+  DatabaseMasterPassword:
+    Type: String
+    Description: The master password to set for the Aurora MySQL database
+    NoEcho: true
+
+  DatabaseSubnets:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: Subnets for use by the Aurora MySQL database
+
   SlackClientId:
     Type: String
+    Description: The Slack application's Client ID
     NoEcho: true
 
   SlackClientSecret:
     Type: String
+    Description: The Slack application's Client Secret
     NoEcho: true
 
 Resources:
+
+# API Gateway Resources
 
   ApiGateway:
     Type: AWS::Serverless::Api
@@ -80,6 +93,32 @@ Resources:
       DomainName: !Ref ApiCustomDomain
       RestApiId: !Ref ApiGateway
       Stage: Prod
+
+# Database
+
+  Database:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora
+      EngineMode: serverless
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      StorageEncrypted: true
+      ScalingConfiguration:
+        MinCapacity: 2
+        MaxCapacity: 4
+        AutoPause: true
+        SecondsUntilAutoPause: 300
+      MasterUsername: jtgadmin
+      MasterUserPassword: !Ref DatabaseMasterPassword
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subnet Group for the Database"
+      DBSubnetGroupName: slack-database
+      SubnetIds: !Ref DatabaseSubnets
+
+# Lambda Functions
 
   SlackEvents:
     Type: AWS::Serverless::Function
