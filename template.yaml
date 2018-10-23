@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: A trading card assistant for JNUC 2018
+
+Parameters:
+
+  CertificateArn:
+    Type: String
+    Description: The ARN for the certificate to use for the custom domain
+
+  DomainName:
+    Type: String
+    Description: The custom domain name for the API
+
+  SlackClientId:
+    Type: String
+    NoEcho: true
+
+  SlackClientSecret:
+    Type: String
+    NoEcho: true
+
+Resources:
+
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      EndpointConfiguration: EDGE
+
+      DefinitionBody:
+        swagger: 2.0
+        info:
+          title:
+            Ref: AWS::StackName
+        paths:
+          "/slack/events":
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: post
+                type: aws_proxy
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SlackEvents.Arn}/invocations
+              responses: {}
+
+          "/slack/install":
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: post
+                type: aws_proxy
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SlackInstall.Arn}/invocations
+              responses: {}
+
+          "/slack/oauth/redirect":
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: post
+                type: aws_proxy
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SlackOAuthRedirect.Arn}/invocations
+              responses: {}
+
+  ApiCustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Ref DomainName
+      CertificateArn: !Ref CertificateArn
+      EndpointConfiguration:
+        Types:
+          - EDGE
+
+  ApiBasePath:
+    Type: AWS::ApiGateway::BasePathMapping
+    DependsOn:
+      - ApiGateway
+      - ApiGatewayProdStage
+      - ApiCustomDomain
+    Properties:
+      DomainName: !Ref ApiCustomDomain
+      RestApiId: !Ref ApiGateway
+      Stage: Prod
+
+  SlackEvents:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.6
+      CodeUri: ./src/functions/events
+      Handler: events.lambda_handler
+      Events:
+        SlackEvents:
+          Type: Api
+          Properties:
+            Path: /slack/events
+            Method: post
+            RestApiId: !Ref ApiGateway
+
+  SlackInstall:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.6
+      CodeUri: ./src/functions/install
+      Handler: install.lambda_handler
+      Environment:
+        Variables:
+          DOMAIN_NAME: !Ref DomainName
+          CLIENT_ID: !Ref SlackClientId
+      Events:
+        SlackInstall:
+          Type: Api
+          Properties:
+            Path: /slack/install
+            Method: get
+            RestApiId: !Ref ApiGateway
+
+  SlackOAuthRedirect:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.6
+      CodeUri: ./src/functions/oauth_redirect
+      Handler: oauth_redirect.lambda_handler
+      Environment:
+        Variables:
+          DOMAIN_NAME: !Ref DomainName
+          CLIENT_ID: !Ref SlackClientId
+          CLIENT_SECRET: !Ref SlackClientSecret
+      Events:
+        SlackOAuthRedirect:
+          Type: Api
+          Properties:
+            Path: /slack/oauth/redirect
+            Method: get
+            RestApiId: !Ref ApiGateway
