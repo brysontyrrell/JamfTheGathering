@@ -115,6 +115,11 @@ Resources:
       RestApiId: !Ref ApiGateway
       Stage: Prod
 
+# SNS Topic
+
+  EventsTopic:
+    Type: AWS::SNS::Topic
+
 # Database
 
   Database:
@@ -173,14 +178,22 @@ Resources:
       ServiceToken: !GetAtt DatabaseInitializer.Arn
       DatabaseSchemaVersion: !Ref DatabaseSchemaVersion
 
-# Lambda Functions
+# API Lambda Functions
 
   SlackEvents:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: python3.6
-      CodeUri: ./src/functions/events
-      Handler: events.lambda_handler
+      CodeUri: ./src/functions/events/api
+      Handler: api.lambda_handler
+      Environment:
+        Variables:
+          EVENTS_TOPIC: !Ref EventsTopic
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action: sns:Publish
+            Resource: !Ref EventsTopic
       Events:
         SlackEvents:
           Type: Api
@@ -241,6 +254,38 @@ Resources:
             Path: /slack/oauth/redirect
             Method: get
             RestApiId: !Ref ApiGateway
+
+# Event Processing Lambda Functions
+
+  SlackUserEvents:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.6
+      CodeUri: ./src/functions/events/user_events
+      Handler: user_events.lambda_handler
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds: !Ref LambdaSecurityGroups
+        SubnetIds: !Ref DatabaseSubnets
+      Environment:
+        Variables:
+          DATABASE_ENDPOINT: !GetAtt Database.Endpoint.Address
+          DATABASE_PORT: !GetAtt Database.Endpoint.Port
+          DATABASE_USERNAME: !Ref DatabaseMasterUsername
+          DATABASE_PASSWORD: !Ref DatabaseMasterPassword
+      Policies:
+        Statement:
+        - Effect: Allow
+          Action:
+          - ec2:DescribeNetworkInterfaces
+          - ec2:CreateNetworkInterface
+          - ec2:DeleteNetworkInterface
+          Resource: '*'
+      Events:
+        SnsTopic:
+          Type: SNS
+          Properties:
+            Topic: !Ref EventsTopic
 
 # Dev Testing Functions
 

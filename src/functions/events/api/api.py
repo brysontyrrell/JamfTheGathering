@@ -1,8 +1,14 @@
 import json
 import logging
+import os
+
+import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+EVENTS_TOPIC = os.getenv('EVENTS_TOPIC')
 
 
 def response(message, status_code):
@@ -27,6 +33,20 @@ def response(message, status_code):
     }
 
 
+def process_event(data):
+    sns_client = boto3.client('sns')
+    logger.info('Sending Slack event to be processed...')
+
+    try:
+        sns_client.publish(
+            TopicArn=EVENTS_TOPIC,
+            Message=json.dumps(data),
+            MessageStructure='string'
+        )
+    except ClientError as error:
+        logger.exception(f'Error sending SNS notification: {error}')
+
+
 def lambda_handler(event, context):
     body = json.loads(event['body'])
     logger.info(body)
@@ -45,14 +65,9 @@ def lambda_handler(event, context):
     elif event_type == 'event_callback':
         logger.info('Received an event!')
 
-        slack_event = body['event']
-        if slack_event['type'] == 'app_mention':
-            pass
-        elif slack_event['type'] == 'message':
-            pass
+        if body['event']['type'] in ('app_mention', 'message'):
+            process_event(body)
+            return response('Accepted', 202)
 
-        return response('success', 200)
-
-    else:
-        logger.warning('Bad Request')
-        return response('Bad Request', 400)
+    logger.warning('Bad Request')
+    return response('Bad Request', 400)
