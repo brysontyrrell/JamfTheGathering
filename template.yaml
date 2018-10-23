@@ -86,6 +86,15 @@ Resources:
                   Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SlackOAuthRedirect.Arn}/invocations
               responses: {}
 
+          "/dev/database":
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: post
+                type: aws_proxy
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DevDatabase.Arn}/invocations
+              responses: {}
+
   ApiCustomDomain:
     Type: AWS::ApiGateway::DomainName
     Properties:
@@ -204,15 +213,65 @@ Resources:
       Runtime: python3.6
       CodeUri: ./src/functions/oauth_redirect
       Handler: oauth_redirect.lambda_handler
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds: !Ref LambdaSecurityGroups
+        SubnetIds: !Ref DatabaseSubnets
       Environment:
         Variables:
           DOMAIN_NAME: !Ref DomainName
           CLIENT_ID: !Ref SlackClientId
           CLIENT_SECRET: !Ref SlackClientSecret
+          DATABASE_ENDPOINT: !GetAtt Database.Endpoint.Address
+          DATABASE_PORT: !GetAtt Database.Endpoint.Port
+          DATABASE_USERNAME: !Ref DatabaseMasterUsername
+          DATABASE_PASSWORD: !Ref DatabaseMasterPassword
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - ec2:DescribeNetworkInterfaces
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+            Resource: '*'
       Events:
         SlackOAuthRedirect:
           Type: Api
           Properties:
             Path: /slack/oauth/redirect
+            Method: get
+            RestApiId: !Ref ApiGateway
+
+# Dev Testing Functions
+
+  DevDatabase:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.6
+      CodeUri: ./src/functions/dev/database
+      Handler: dev_database.lambda_handler
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds: !Ref LambdaSecurityGroups
+        SubnetIds: !Ref DatabaseSubnets
+      Environment:
+        Variables:
+          DATABASE_ENDPOINT: !GetAtt Database.Endpoint.Address
+          DATABASE_PORT: !GetAtt Database.Endpoint.Port
+          DATABASE_USERNAME: !Ref DatabaseMasterUsername
+          DATABASE_PASSWORD: !Ref DatabaseMasterPassword
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action:
+              - ec2:DescribeNetworkInterfaces
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+            Resource: '*'
+      Events:
+        SlackOAuthRedirect:
+          Type: Api
+          Properties:
+            Path: /dev/database
             Method: get
             RestApiId: !Ref ApiGateway

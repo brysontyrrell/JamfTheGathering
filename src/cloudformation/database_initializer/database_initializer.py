@@ -60,7 +60,7 @@ def lambda_handler(event, context):
 
     try:
         create_database()
-    except Exception as err:
+    except:
         logger.exception(
             'An error occurred while trying to create the database!')
 
