@@ -188,13 +188,16 @@ def command_show_trades(session, user):
         result_has_list = [i.split('_')[-1] for i in read_user_cards(ru, 'have') if i in filtered_have_list]
         result_need_list = [i.split('_')[-1] for i in read_user_cards(ru, 'need') if i in filtered_need_list]
 
+        if not (result_has_list or result_need_list):
+            continue
+
         if result_has_list:
-            has_string = f"has {', '.join(result_has_list)}"
+            result_has_list = f"has {', '.join(result_has_list)}"
 
         if result_need_list:
-            need_string = f"needs {', '.join(result_need_list)}"
+            result_need_list = f"needs {', '.join(result_need_list)}"
 
-        message_text += f"<@{ru.user_id}> {' and '.join([l for l in (has_string, need_string) if l])}\n"
+        message_text += f"<@{ru.user_id}> {' and '.join([l for l in (result_has_list, result_need_list) if l])}\n"
 
     return message_text
 
@@ -203,13 +206,13 @@ def command_show_mine(user):
     has_list = read_user_cards(user, 'have')
     needs_list = read_user_cards(user, 'need')
 
-    if not (has_list and needs_list):
+    if not (has_list or needs_list):
         return "You haven't flagged any cards yet!"
 
     message_text = 'You have flagged the following cards:'
     if has_list:
         message_text += f"\nYou have {', '.join([i.split('_')[-1] for i in has_list])}"
-    if has_list:
+    if needs_list:
         message_text += f"\nYou need {', '.join([i.split('_')[-1] for i in needs_list])}"
 
     return message_text
