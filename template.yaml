@@ -29,6 +29,15 @@ Parameters:
     Type: Number
     Description: A version value for the database schema to trigger an update
 
+  DropDatabase:
+    Type: Number
+    Description: Drop the existing database (1=True, 0=False).
+      THIS MUST SET BACK TO '0' BETWEEN DEPLOYMENTS!
+    AllowedValues:
+      - 0
+      - 1
+    Default: 0
+
   LambdaSecurityGroups:
     Type: List<AWS::EC2::SecurityGroup::Id>
     Description: Security groups to assign VPC deployed Lambdas
@@ -163,6 +172,7 @@ Resources:
           DATABASE_PORT: !GetAtt Database.Endpoint.Port
           DATABASE_USERNAME: !Ref DatabaseMasterUsername
           DATABASE_PASSWORD: !Ref DatabaseMasterPassword
+          DROP_DATABASE: !Ref DropDatabase
       Policies:
         Statement:
           - Effect: Allow
