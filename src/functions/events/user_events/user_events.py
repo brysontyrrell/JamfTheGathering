@@ -138,7 +138,7 @@ def command_i_traded(user, com_string):
 
     return f'I have updated your cards!\n' \
            f'{", ".join([str(i) for i in traded_out])} ' \
-           f'are no longer flagged for trading.\n' \
+           f'are no longer flagged for trading\n' \
            f'{", ".join([str(i) for i in traded_in])} ' \
            f'are no longer flagged as needed'
 
@@ -199,6 +199,22 @@ def command_show_trades(session, user):
     return message_text
 
 
+def command_show_mine(user):
+    has_list = read_user_cards(user, 'have')
+    needs_list = read_user_cards(user, 'need')
+
+    if not (has_list and needs_list):
+        return "You haven't flagged any cards yet!"
+
+    message_text = 'You have flagged the following cards:'
+    if has_list:
+        message_text += f"\nYou have {', '.join([i.split('_')[-1] for i in has_list])}"
+    if has_list:
+        message_text += f"\nYou need {', '.join([i.split('_')[-1] for i in needs_list])}"
+
+    return message_text
+
+
 def process_command(input_text, session, user):
     commit = True
     message_text = ''
@@ -213,7 +229,9 @@ def process_command(input_text, session, user):
                 "cards you need:\n\n```\nI have 1 2 3\nI need 4 5 6```\nAs " \
                 "you make trades, you can report them and update your " \
                 "available cards using:\n```I traded 1 2 for 4 5```\n" \
-                "To find other users to trade with, type:```Show trades```"
+                "To find other users to trade with, type:```Show trades```\n" \
+                "To see what cards you have flagged as have or need, type:\n" \
+                "```show mine```"
         elif input_text.startswith('i have'):
             message_text = command_i_have(user, input_text)
 
@@ -225,6 +243,10 @@ def process_command(input_text, session, user):
 
         elif input_text.startswith('show trades'):
             message_text = command_show_trades(session, user)
+            commit = False
+
+        elif input_text.startswith('show mine'):
+            message_text = command_show_mine(user)
             commit = False
 
     except CommandException:
