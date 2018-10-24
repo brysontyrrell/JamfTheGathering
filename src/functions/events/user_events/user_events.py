@@ -180,7 +180,7 @@ def command_show_trades(session, user):
             or_(*card_filter_list)
         ).all()
 
-    message_text = 'Here are available trades for you:\n'
+    message_text = 'Here are the available trades for you:\n'
     if not results:
         message_text = 'Sorry, no trades available yet!'
 
@@ -208,11 +208,11 @@ def process_command(input_text, session, user):
             message_text = \
                 "Jamf the Gathering helps you find other JNUC attendees on " \
                 "Slack who have cards to trade with you in your quest to " \
-                "complete the full set of 18 cards!\n\nJust send me the " \
+                "complete the full set of 18!\n\nJust send me the " \
                 "following commands to say which cards you have and which " \
                 "cards you need:\n\n```\nI have 1 2 3\nI need 4 5 6```\nAs " \
                 "you make trades, you can report them and update your " \
-                "available caeds using:\n```I traded 1 2 for 4 5```\n" \
+                "available cards using:\n```I traded 1 2 for 4 5```\n" \
                 "To find other users to trade with, type:```Show trades```"
         elif input_text.startswith('i have'):
             message_text = command_i_have(user, input_text)
