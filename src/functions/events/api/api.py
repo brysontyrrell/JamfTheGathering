@@ -64,6 +64,9 @@ def lambda_handler(event, context):
 
     elif event_type == 'event_callback':
         logger.info('Received an event!')
+        if body['event'].get('subtype', '') == 'bot_message':
+            logger.info('Ignoring bot message...')
+            return response('OK', 200)
 
         if body['event']['type'] in ('app_mention', 'message'):
             process_event(body)
