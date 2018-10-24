@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import os
 
 from botocore.vendored import requests
@@ -15,11 +16,20 @@ DATABASE_PORT = os.getenv('DATABASE_PORT')
 DATABASE_USERNAME = os.getenv('DATABASE_USERNAME')
 DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
 
+I_HAVE_RE = re.compile(r'^i\s+have\s+([\d\s]+)(?<!\s)\s*$')
+I_NEED_RE = re.compile(r'^i\s+need\s+([\d\s]+)(?<!\s)\s*$')
+I_TRADED_RE = re.compile(
+    r'^i\s+traded\s+([\d\s]+)(?<!\s)\s+for\s+([\d\s]+)(?<!\s)\s*$')
+
 engine = create_engine(
     f'mysql+pymysql://{DATABASE_USERNAME}:{DATABASE_PASSWORD}@'
     f'{DATABASE_ENDPOINT}:{DATABASE_PORT}/jamfthegathering?charset=utf8'
 )
 Session.configure(bind=engine, expire_on_commit=False)
+
+
+class CommandException(Exception):
+    pass
 
 
 def get_or_create_user(session, data):
@@ -71,24 +81,13 @@ def send_chat_message(channel, text, token):
     logger.info(f"Slack API response: {r.status_code} {r.json()}")
 
 
-def parse_card_list(string):
+def parse_int_list(string):
     try:
         int_list = [int(i) for i in string.strip().split()]
     except (TypeError, ValueError):
         return list()
 
     return int_list
-
-
-def parse_trade(string):
-    split = string.strip().partition('for')
-    try:
-        val1 = int(split[0].strip())
-        val2 = int(split[2].strip())
-    except (TypeError, ValueError):
-        return None, None
-
-    return val1, val2
 
 
 def update_cards(user, type_, card_list, set_to=True):
@@ -102,33 +101,68 @@ def update_cards(user, type_, card_list, set_to=True):
     return completed
 
 
-def process_command(session, message, user):
-    have_completed = None
-    need_completed = None
+def command_i_have(user, com_string):
+    match = I_HAVE_RE.match(com_string)
+    if not match:
+        raise CommandException
+
+    card_list = parse_int_list(match.group(1))
+    completed = update_cards(user, 'have', card_list)
+
+    return 'I have flagged the following cards available for trade: ' \
+           f'{", ".join([str(i) for i in completed])}\n'
+
+
+def command_i_need(user, com_string):
+    match = I_NEED_RE.match(com_string)
+    if not match:
+        raise CommandException
+
+    card_list = parse_int_list(match.group(1))
+    completed = update_cards(user, 'need', card_list)
+
+    return 'I have flagged the following cards as needing to trade for: ' \
+           f'{", ".join([str(i) for i in completed])}\n'
+
+
+def command_i_traded(user, com_string):
+    match = I_TRADED_RE.match(com_string)
+    if not match:
+        raise CommandException
+
+    trade_out_list = parse_int_list(match.group(1))
+    trade_in_list = parse_int_list(match.group(2))
+
+    traded_out = update_cards(user, 'have', trade_out_list, False)
+    traded_in = update_cards(user, 'need', trade_in_list, False)
+
+    return f'I have updated your cards!\n' \
+           f'{", ".join([str(i) for i in traded_out])} ' \
+           f'are no longer flagged for trading.\n' \
+           f'{", ".join([str(i) for i in traded_in])} ' \
+           f'are no longer flagged as needed'
+
+
+def process_command(input_text, session, user):
     commit = True
     message_text = ''
 
-    if message.startswith('i have'):
-        _, values = message.split('i have')
-        card_list = parse_card_list(values)
-        have_completed = update_cards(user, 'have', card_list)
+    try:
+        if input_text.startswith('i have'):
+            message_text = command_i_have(user, input_text)
 
-    elif message.startswith('i need'):
-        _, values = message.split('i need')
-        card_list = parse_card_list(values)
-        need_completed = update_cards(user, 'need', card_list)
+        elif input_text.startswith('i need'):
+            message_text = command_i_need(user, input_text)
 
-    elif message.startswith('i traded'):
-        _, values = message.split('i traded')
-        trade = parse_trade(values)
-        have_completed = update_cards(user, 'have', [trade[0]], False)
-        need_completed = update_cards(user, 'need', [trade[1]], False)
+        elif input_text.startswith('i traded'):
+            message_text = command_i_traded(user, input_text)
 
-    elif message.startswith('show trades'):
+        elif input_text.startswith('show trades'):
+            message_text = 'Here are available trades for you!\n...'
+            commit = False
+    except CommandException:
+        message_text = 'Whoops, something went wrong!'
         commit = False
-
-    else:
-        return None
 
     if commit:
         try:
@@ -137,13 +171,6 @@ def process_command(session, message, user):
             logger.exception(f"Unable to update Slack user '{user.user_id}'")
             session.rollback()
             return 'Whoops, something went wrong!'
-
-    if have_completed:
-        message_text += 'I have flagged the following cards as available for ' \
-                        f'trade: {", ".join([str(i) for i in have_completed])}\n'
-    if need_completed:
-        message_text += 'I have flagged the following cards as needed from ' \
-                        f'trade: {", ".join([str(i) for i in need_completed])}\n'
 
     if not message_text:
         message_text = "I'm sorry, I'm not sure what you wanted me to do?"
@@ -156,7 +183,6 @@ def lambda_handler(event, context):
         logging.info('Processing SNS records...')
         for record in event['Records']:
             session = Session()
-            session
 
             data = json.loads(record['Sns']['Message'])
             logger.info(data)
@@ -171,18 +197,17 @@ def lambda_handler(event, context):
 
             if data['event']['type'] == 'app_mention':
                 dm_user = True
-                source_text = \
+                input_text = \
                     data['event']['text'].lower().split(maxsplit=1)[-1]
 
             elif data['event']['type'] == 'message':
-                source_text = data['event']['text'].lower()
+                input_text = data['event']['text'].lower()
 
             else:
-                logger.warning(
-                    f"Event type '{data['event']['type']}' is not supported...")
+                logger.warning(f"Event '{data['event']['type']}' is not supported!")
                 continue
 
-            message_text = process_command(session, source_text, user)
+            message_text = process_command(input_text, session, user)
             session.close()
 
             if not message_text:
