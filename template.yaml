@@ -65,8 +65,12 @@ Resources:
       DefinitionBody:
         swagger: 2.0
         info:
-          title:
-            Ref: AWS::StackName
+          title: !Ref AWS::StackName
+        securityDefinitions:
+          apiKey:
+            type: apiKey
+            name: x-api-key
+            in: header
         paths:
           "/slack/events":
             post:
@@ -103,6 +107,37 @@ Resources:
                 uri:
                   Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DevDatabase.Arn}/invocations
               responses: {}
+              security:
+                - apiKey: []
+
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - ApiGateway
+      - ApiGatewayProdStage
+    Properties:
+      Description: Key restricts access to API endpoints.
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref ApiGateway
+          StageName: Prod
+
+  ApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - ApiGateway
+      - ApiGatewayProdStage
+    Properties:
+      ApiStages:
+        - ApiId: !Ref ApiGateway
+          Stage: Prod
+
+  ApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ApiUsagePlan
 
   ApiCustomDomain:
     Type: AWS::ApiGateway::DomainName
