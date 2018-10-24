@@ -4,7 +4,7 @@ import re
 import os
 
 from botocore.vendored import requests
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, or_
 
 from models import Session, SlackTeams, SlackUsers
 
@@ -143,12 +143,78 @@ def command_i_traded(user, com_string):
            f'are no longer flagged as needed'
 
 
+def read_user_cards(user, type_):
+    attr_list = list()
+
+    for i in range(1, 19):
+        attr_name = f'{type_}_{i}'
+        if getattr(user, attr_name):
+            attr_list.append(attr_name)
+
+    return attr_list
+
+
+def command_show_trades(session, user):
+    card_filter_list = list()
+
+    user_have_list = read_user_cards(user, 'have')
+    user_need_list = read_user_cards(user, 'need')
+
+    filtered_need_list = [f"need_{i.split('_')[-1]}" for i in user_have_list]
+    filtered_have_list = [f"have_{i.split('_')[-1]}" for i in user_need_list]
+
+    for i in filtered_need_list:
+        card_filter_list.append(
+            getattr(user, i) == True)
+
+    for i in filtered_have_list:
+        card_filter_list.append(
+            getattr(user, i) == True)
+
+    results = session.query(SlackUsers)\
+        .filter(
+            SlackUsers.user_id != user.user_id,
+            SlackUsers.slack_team_id == user.slack_team_id
+        )\
+        .filter(
+            or_(*card_filter_list)
+        ).all()
+
+    message_text = 'Here are available trades for you:\n'
+    if not results:
+        message_text = 'Sorry, no trades available yet!'
+
+    for ru in results:
+        result_has_list = [i.split('_')[-1] for i in read_user_cards(ru, 'have') if i in filtered_have_list]
+        result_need_list = [i.split('_')[-1] for i in read_user_cards(ru, 'need') if i in filtered_need_list]
+
+        if result_has_list:
+            has_string = f"has {', '.join(result_has_list)}"
+
+        if result_need_list:
+            need_string = f"needs {', '.join(result_need_list)}"
+
+        message_text += f"<@{ru.user_id}> {' and '.join([l for l in (has_string, need_string) if l])}\n"
+
+    return message_text
+
+
 def process_command(input_text, session, user):
     commit = True
     message_text = ''
 
     try:
-        if input_text.startswith('i have'):
+        if input_text.startswith('help'):
+            message_text = \
+                "Jamf the Gathering helps you find other JNUC attendees on " \
+                "Slack who have cards to trade with you in your quest to " \
+                "complete the full set of 18 cards!\n\nJust send me the " \
+                "following commands to say which cards you have and which " \
+                "cards you need:\n\n```\nI have 1 2 3\nI need 4 5 6```\nAs " \
+                "you make trades, you can report them and update your " \
+                "available caeds using:\n```I traded 1 2 for 4 5```\n" \
+                "To find other users to trade with, type:```Show trades```"
+        elif input_text.startswith('i have'):
             message_text = command_i_have(user, input_text)
 
         elif input_text.startswith('i need'):
@@ -158,8 +224,9 @@ def process_command(input_text, session, user):
             message_text = command_i_traded(user, input_text)
 
         elif input_text.startswith('show trades'):
-            message_text = 'Here are available trades for you!\n...'
+            message_text = command_show_trades(session, user)
             commit = False
+
     except CommandException:
         message_text = 'Whoops, something went wrong!'
         commit = False
@@ -173,7 +240,8 @@ def process_command(input_text, session, user):
             return 'Whoops, something went wrong!'
 
     if not message_text:
-        message_text = "I'm sorry, I'm not sure what you wanted me to do?"
+        message_text = "I'm sorry, I'm not sure what you wanted me to do? " \
+                       "Type 'Help' to learn how I work!"
 
     return message_text
 
